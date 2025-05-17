@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Overnight Oats Order Mapper</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2rem; }
+    textarea { width: 100%; height: 200px; margin-bottom: 1rem; font-family: monospace; }
+    button { padding: 0.5rem 1rem; font-size: 1rem; border-radius: 0.25rem; margin: 0.25rem; }
+    .label { font-weight: bold; margin-bottom: 0.5rem; display: block; }
+    #buttons { margin-bottom: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>Overnight Oats Order Mapper</h1>
+  <label class="label" for="input">Paste lines with or without quantities to convert or sort:</label>
+  <textarea id="input" placeholder="2 × (1-2-3) Blueberry\n(2-3-3) Lemon Loaf\n5 × Vanilla\nVanilla"></textarea>
+  <div id="buttons">
+    <button id="convertCode2Full">Convert Codes → Full</button>
+    <button id="convertFull2Code">Convert Full → Codes</button>
+    <button id="sortCode2Full">Sort Coded List → Full (A→Z)</button>
+    <button id="sortFull2Code">Sort Full List → Codes (Numeric)</button>
+  </div>
+  <label class="label" for="output">Output:</label>
+  <textarea id="output" readonly placeholder="Results appear here..."></textarea>
+
+  <script>
+    // Core mappings
+    const CODE_TO_SHORTHAND = {
+      '1-1-1':'Pumpkin','1-1-2':'Fruity','1-1-3':'Vanilla','1-1-4':'MATCHA',
+      '1-2-1':'OREO','1-2-2':'Coconut','1-2-3':'Blueberry','1-2-4':'NEW SHAKER BOTTLE GREEN','1-3-1':'Peppermint',
+      '2-1-1':'Peach','2-1-2':'Wht Choc Rspbry','2-1-3':'PEAR Crumble','2-1-4':'Rhubarb',
+      '2-2-1':'CHOC CHIP','2-2-2':'Chocolate','2-2-3':'Mint','2-2-4':'B FOSTER',
+      '2-3-1':'Cold Brew','2-3-3':'Lemon Loaf','2-3-4':'CARROT CAKE',
+      '3-1-1':'Mango','3-1-2':'Snicker','3-1-3':'Gingerbread','3-1-4':'PINA COLADA',
+      '3-2-1':'Cinnamon','3-2-2':'Glzd Blubry','3-2-3':'Maple','3-2-4':'Boston',
+      '3-3-3':'FRENCH TOAST',
+      '4-1-1':'Ckie Butter','4-1-2':'Choc Cvrd Banana','4-1-3':'PB&J','4-1-4':'CHOCOLATE CAKE',
+      '4-2-1':'Strawberry','4-2-2':'Mixed Berries','4-2-3':'Toffee','4-2-4':'Choc Satin Pie',
+      '5-1-1':'Tiramisu','5-1-2':'CARAMEL APPLE','5-1-3':'Orange',
+      '5-2-1':'Mocha Dream','5-2-2':'Sea Salt','5-2-3':'Smores','5-2-4':'Space Brownie','5-3-1':'EGGNOG',
+      '6-1-1':'SPICE LATTE','6-1-2':'Strwbry Banana','6-2-1':'Apple','6-2-2':'Banana','6-2-3':'Peanut Butter','6-2-4':'Birthday'
+    };
+    const SHORTHAND_TO_FULL = {
+      'Pumpkin':'Pumpkin Pie','Fruity':'Fruity Cereal','Vanilla':'Vanilla','MATCHA':'Matcha Mango',
+      'OREO':'Cookies and Cream','Coconut':'Coconut Cream Pie','Blueberry':'Blueberry Cobbler','NEW SHAKER BOTTLE GREEN':'NEW SHAKER BOTTLE GREEN','Peppermint':'Peppermint Mocha',
+      'Peach':'Peach Upside Down Cake','Wht Choc Rspbry':'White Chocolate Raspberry','PEAR Crumble':'Pear & Apple Crumble','Rhubarb':'Strawberry Rhubarb',
+      'CHOC CHIP':'Chocolate Chip Cookie Dough','Chocolate':'Chocolate Peanut Butter Banana','Mint':'Mint Chocolate Chip Cookie','B FOSTER':'Bananas Foster',
+      'Cold Brew':'Caramel Cold Brew','Lemon Loaf':'Iced Lemon Loaf','CARROT CAKE':'Carrot Cake',
+      'Mango':'Mango Custard','Snicker':'Snickerdoodle','Gingerbread':'Gingerbread','PINA COLADA':'Pina Colada',
+      'Cinnamon':'Cinnamon Roll','Glzd Blubry':'Glazed Blueberry Donut','Maple':'Maple Pancakes','Boston':'Boston Cream','FRENCH TOAST':'French Toast',
+      'Ckie Butter':'Cookie Butter','Choc Cvrd Banana':'Chocolate Covered Banana','PB&J':'Peanut Butter & Jelly','CHOCOLATE CAKE':'Chocolate Cake',
+      'Strawberry':'Strawberries & Cream','Mixed Berries':'Mixed Berries & Cream','Toffee':'Salted Toffee','Choc Satin Pie':'Chocolate Satin Pie',
+      'Tiramisu':'Tiramisu','CARAMEL APPLE':'Caramel Apple','Orange':'Orange Cream Pop','Mocha Dream':'Mocha Dream',
+      'Sea Salt':'Dark Chocolate Sea Salt','Smores':'S’mores','Space Brownie':'Space Brownie','EGGNOG':'Eggnog',
+      'SPICE LATTE':'Pumpkin Spice Latte','Strwbry Banana':'Strawberry Banana','Apple':'Green Apple Cinnamon','Banana':'Banana Bread','Peanut Butter':'Peanut Butter Cookie Dough Cacao Crunch','Birthday':'Birthday Cake'
+    };
+    // Build direct code→full map
+    const CODE_TO_FULL = {};
+    Object.entries(CODE_TO_SHORTHAND).forEach(([code, sh]) => {
+      const full = SHORTHAND_TO_FULL[sh];
+      if (full) CODE_TO_FULL[code] = full;
+    });
+    // Reverse full→{code, shorthand}
+    const FULL_TO_CODE = {};
+    Object.entries(SHORTHAND_TO_FULL).forEach(([sh, full]) => {
+      const code = Object.entries(CODE_TO_SHORTHAND).find(([c, s]) => s === sh)?.[0];
+      if (code) FULL_TO_CODE[full] = { code, shorthand: sh };
+    });
+
+    // Regex patterns
+    const codeLineQty = /^\s*(\d+)\s*[×x]\s*\((\d+-\d+-\d+)\)\s*(.+)$/;
+    const codeLineNoQty = /^\s*\((\d+-\d+-\d+)\)\s*(.+)$/;
+    const fullLineQty = /^\s*(\d+)\s*[×x]\s*(.+)$/;
+
+    // Converters with qty
+    function convertCode2Full(text) {
+      return text.split(/\r?\n/).map(line => {
+        let m = line.match(codeLineQty);
+        if (m) {
+          const [, qty, code] = m;
+          const full = CODE_TO_FULL[code] || m[3].trim();
+          return `${qty} × ${full}`;
+        }
+        m = line.match(codeLineNoQty);
+        if (m) {
+          const [, code] = m;
+          return CODE_TO_FULL[code] || m[2].trim();
+        }
+        return line;
+      }).join("\n");
+    }
+    function convertFull2Code(text) {
+      return text.split(/\r?\n/).map(line => {
+        let m = line.match(fullLineQty);
+        if (m) {
+          const [, qty, name] = m;
+          const entry = FULL_TO_CODE[name.trim()];
+          if (entry) return `${qty} × (${entry.code}) ${entry.shorthand}`;
+        }
+        const entry = FULL_TO_CODE[line.trim()];
+        if (entry) return `(${entry.code}) ${entry.shorthand}`;
+        return line;
+      }).join("\n");
+    }
+
+    // Sorted batch converters (qty included)
+    function sortCode2Full(text) {
+      const items = text.split(/\r?\n/).map(line => {
+        let m = line.match(codeLineQty);
+        if (!m) m = line.match(codeLineNoQty) && [null, '1', m[1], m[2]];
+        if (m) {
+          const qty = parseInt(m[1], 10) || 1;
+          const code = m[2];
+          const full = CODE_TO_FULL[code] || m[3].trim();
+          return { qty, full };
+        }
+        return null;
+      }).filter(Boolean);
+      items.sort((a, b) => a.full.localeCompare(b.full, undefined, { sensitivity: 'base' }));
+      return items.map(i => `${i.qty} × ${i.full}`).join("\n");
+    }
+    function sortFull2Code(text) {
+      const items = text.split(/\r?\n/).map(line => {
+        let m = line.match(fullLineQty);
+        if (!m) m = [null, '1', line.trim()];
+        const qty = parseInt(m[1], 10) || 1;
+        const entry = FULL_TO_CODE[m[2].trim()];
+        if (entry) {
+          const parts = entry.code.split('-').map(n => parseInt(n, 10));
+          return { qty, parts, entry };
+        }
+        return null;
+      }).filter(Boolean);
+      items.sort((a, b) => {
+        for (let i = 0; i < 3; i++) {
+          if (a.parts[i] !== b.parts[i]) return a.parts[i] - b.parts[i];
+        }
+        return 0;
+      });
+      return items.map(i => `${i.qty} × (${i.entry.code}) ${i.entry.shorthand}`).join("\n");
+    }
+
+    // Event hooks
+    document.getElementById('convertCode2Full').addEventListener('click', () => {
+      document.getElementById('output').value = convertCode2Full(document.getElementById('input').value);
+    });
+    document.getElementById('convertFull2Code').addEventListener('click', () => {
+      document.getElementById('output').value = convertFull2Code(document.getElementById('input').value);
+    });
+    document.getElementById('sortCode2Full').addEventListener('click', () => {
+      document.getElementById('output').value = sortCode2Full(document.getElementById('input').value);
+    });
+    document.getElementById('sortFull2Code').addEventListener('click', () => {
+      document.getElementById('output').value = sortFull2Code(document.getElementById('input').value);
+    });
+  </script>
+</body>
+</html>
+
